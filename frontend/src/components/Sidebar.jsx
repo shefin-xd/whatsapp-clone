@@ -1,10 +1,10 @@
-// frontend/src/components/Sidebar.jsx (No major changes needed for responsiveness within this component)
+// frontend/src/components/Sidebar.jsx (Updated accessChat function)
 import React, { useState, useContext } from 'react';
 import AuthContext from '../context/AuthContext';
 import api from '../utils/api';
-import ChatList from './ChatList'; // Assuming ChatList is now a separate component or you'll include its logic here
 
-const Sidebar = ({ currentUser, logout }) => {
+// Add setSelectedChat and socket to props from ChatPage
+const Sidebar = ({ currentUser, logout, setSelectedChat, socket }) => {
     const [search, setSearch] = useState('');
     const [searchResults, setSearchResults] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -24,7 +24,7 @@ const Sidebar = ({ currentUser, logout }) => {
                 const { data } = await api.get(`/users?search=${e.target.value}`, config);
                 setSearchResults(data);
             } catch (err) {
-                console.error('Error searching users:', err);
+                console.error('Error searching users:', err.response ? err.response.data : err.message);
                 setError('Failed to fetch users. Please try again.');
                 setSearchResults([]);
             } finally {
@@ -35,21 +35,35 @@ const Sidebar = ({ currentUser, logout }) => {
         }
     };
 
-    // Placeholder for creating/accessing chat (this logic would typically be in ChatList or ChatPage)
+    // THIS IS THE KEY FUNCTION TO FIX
     const accessChat = async (userId) => {
         try {
+            setLoading(true); // Indicate loading for chat creation
             const config = {
                 headers: {
                     'Content-Type': 'application/json',
                     Authorization: `Bearer ${currentUser.token}`,
                 },
             };
-            // This endpoint creates a chat or returns an existing one
-            // This is primarily for ChatList or where you initiate chats
-            // We'll focus on getting the search working first.
-            console.log("Accessing chat with user:", userId);
+            // Call the backend to create or access the chat
+            const { data } = await api.post('/chats', { userId }, config);
+            
+            // Check if this chat is already in the list
+            // For now, we'll let ChatList's socket event handle adding new chat if it's truly new
+            // But we need to immediately set it as selected
+            setSelectedChat(data); // Set the chat as selected to open ChatWindow
+
+            // Emit 'join_chat' to connect to the new chat's socket room
+            socket.emit('join_chat', data._id);
+
+            setSearch(''); // Clear search bar
+            setSearchResults([]); // Clear search results
+
         } catch (error) {
-            console.error('Error accessing chat:', error);
+            console.error('Error accessing chat:', error.response ? error.response.data : error.message);
+            setError('Failed to start chat. Please try again.');
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -78,10 +92,10 @@ const Sidebar = ({ currentUser, logout }) => {
             </div>
 
             {/* Search Results */}
-            {loading && <p className="text-center text-gray-500">Loading...</p>}
+            {loading && search.length > 2 && <p className="text-center text-gray-500">Searching...</p>}
             {error && <p className="text-center text-red-500">{error}</p>}
             {searchResults.length > 0 && (
-                <div className="mb-4">
+                <div className="mb-4 max-h-48 overflow-y-auto custom-scrollbar"> {/* Added max-h and overflow */}
                     <h3 className="text-md font-semibold text-gray-700 mb-2">Search Results:</h3>
                     <div className="space-y-2">
                         {searchResults.map((user) => (
@@ -101,12 +115,6 @@ const Sidebar = ({ currentUser, logout }) => {
                     </div>
                 </div>
             )}
-
-            {/* Chat List (assuming ChatList is integrated here or rendered separately) */}
-            {/* If ChatList is intended to be part of Sidebar: */}
-            {/* <div className="flex-1 overflow-y-auto custom-scrollbar">
-                <ChatList currentUser={currentUser} setSelectedChat={setSelectedChat} onlineUsers={onlineUsers} socket={socket} />
-            </div> */}
         </div>
     );
 };
