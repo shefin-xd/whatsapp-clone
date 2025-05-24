@@ -1,35 +1,45 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+// frontend/src/App.jsx
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import Register from './pages/Register';
+import Login from './pages/Login';
 
-function App() {
-  const [count, setCount] = useState(0)
+// Placeholder for your main chat application component
+const Home = () => {
+    const { user, logout } = useAuth();
 
-  return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.jsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
-}
+    if (!user) {
+        return <Navigate to="/login" />;
+    }
 
-export default App
+    return (
+        <div className="min-h-screen bg-gray-200 flex flex-col items-center justify-center">
+            <h1 className="text-4xl font-bold mb-4">Welcome, {user.username}!</h1>
+            <p className="text-lg mb-6">This is your chat app home page. More features coming soon!</p>
+            <button
+                onClick={logout}
+                className="bg-red-500 hover:bg-red-700 text-white font-bold py-2 px-4 rounded"
+            >
+                Logout
+            </button>
+        </div>
+    );
+};
+
+const App = () => {
+    return (
+        <AuthProvider>
+            <Router>
+                <Routes>
+                    <Route path="/register" element={<Register />} />
+                    <Route path="/login" element={<Login />} />
+                    <Route path="/" element={<Home />} /> {/* Protected route */}
+                    {/* Add more routes for chat, groups, settings, etc. */}
+                </Routes>
+            </Router>
+        </AuthProvider>
+    );
+};
+
+export default App;
