@@ -1,16 +1,13 @@
 const express = require('express');
-const asyncHandler = require('express-async-handler'); // Simple wrapper for async middleware
+const asyncHandler = require('express-async-handler');
 const User = require('../models/User');
-const generateToken = require('../utils/generateToken'); // We'll create this next
+const generateAccessToken = require('../utils/generateToken'); // <-- Corrected import
 
 const router = express.Router();
 
-// Generate JWT token
-const generateAccessToken = (id) => {
-    return jwt.sign({ id }, process.env.JWT_SECRET, {
-        expiresIn: '1h', // Token expires in 1 hour
-    });
-};
+// Removed the duplicate generateAccessToken function from here,
+// as it's now imported from utils/generateToken.js
+// const generateAccessToken = (id) => { ... };
 
 // @desc    Register a new user
 // @route   POST /api/auth/register
@@ -45,7 +42,7 @@ router.post(
                 username: user.username,
                 email: user.email,
                 profilePicture: user.profilePicture,
-                token: generateAccessToken(user._id),
+                token: generateAccessToken(user._id), // Use the imported function
             });
         } else {
             res.status(400);
@@ -70,7 +67,7 @@ router.post(
                 username: user.username,
                 email: user.email,
                 profilePicture: user.profilePicture,
-                token: generateAccessToken(user._id),
+                token: generateAccessToken(user._id), // Use the imported function
             });
         } else {
             res.status(401);
