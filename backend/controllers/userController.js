@@ -1,7 +1,5 @@
-// backend/controllers/userController.js (NEW)
 const asyncHandler = require('express-async-handler');
 const User = require('../models/User');
-// const generateToken = require('../utils/generateToken'); // No longer needed here if only allUsers is exported
 
 // @desc    Get all users or search users
 // @route   GET /api/users?search=keyword
@@ -17,11 +15,12 @@ const allUsers = asyncHandler(async (req, res) => {
         : {};
 
     // Find users, exclude the currently logged-in user from search results
+    // req.user._id is populated by the `protect` middleware
     const users = await User.find(keyword)
-        .find({ _id: { $ne: req.user._id } }) // req.user._id comes from `protect` middleware
+        .find({ _id: { $ne: req.user._id } })
         .select('-password'); // Exclude password from the results
 
     res.send(users);
 });
 
-module.exports = { allUsers }; // Only export allUsers
+module.exports = { allUsers };
