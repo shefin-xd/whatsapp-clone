@@ -7,7 +7,7 @@ import ChatPage from './pages/ChatPage'; // This will contain the main responsiv
 import AuthContext from './context/AuthContext';
 import io from 'socket.io-client';
 
-const socket = io(import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000', {
+const socket = io('https://shefin-whatsapp-clone.onrender.com', {
     transports: ['websocket', 'polling']
 });
 
