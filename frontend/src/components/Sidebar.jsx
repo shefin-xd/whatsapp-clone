@@ -1,7 +1,8 @@
-// frontend/src/components/Sidebar.jsx (Updated accessChat function)
+// frontend/src/components/Sidebar.jsx
 import React, { useState, useContext } from 'react';
 import AuthContext from '../context/AuthContext';
 import api from '../utils/api';
+import Spinner from './Spinner'; // Import Spinner component
 
 // Add setSelectedChat and socket to props from ChatPage
 const Sidebar = ({ currentUser, logout, setSelectedChat, socket }) => {
@@ -35,7 +36,7 @@ const Sidebar = ({ currentUser, logout, setSelectedChat, socket }) => {
         }
     };
 
-    // THIS IS THE KEY FUNCTION TO FIX
+    // This is the key function to access/create a chat from search results
     const accessChat = async (userId) => {
         try {
             setLoading(true); // Indicate loading for chat creation
@@ -45,12 +46,8 @@ const Sidebar = ({ currentUser, logout, setSelectedChat, socket }) => {
                     Authorization: `Bearer ${currentUser.token}`,
                 },
             };
-            // Call the backend to create or access the chat
             const { data } = await api.post('/chats', { userId }, config);
-            
-            // Check if this chat is already in the list
-            // For now, we'll let ChatList's socket event handle adding new chat if it's truly new
-            // But we need to immediately set it as selected
+
             setSelectedChat(data); // Set the chat as selected to open ChatWindow
 
             // Emit 'join_chat' to connect to the new chat's socket room
@@ -92,10 +89,10 @@ const Sidebar = ({ currentUser, logout, setSelectedChat, socket }) => {
             </div>
 
             {/* Search Results */}
-            {loading && search.length > 2 && <p className="text-center text-gray-500">Searching...</p>}
+            {loading && search.length > 2 && <p className="text-center text-gray-500"><Spinner /> Searching...</p>}
             {error && <p className="text-center text-red-500">{error}</p>}
             {searchResults.length > 0 && (
-                <div className="mb-4 max-h-48 overflow-y-auto custom-scrollbar"> {/* Added max-h and overflow */}
+                <div className="mb-4 max-h-48 overflow-y-auto custom-scrollbar">
                     <h3 className="text-md font-semibold text-gray-700 mb-2">Search Results:</h3>
                     <div className="space-y-2">
                         {searchResults.map((user) => (
