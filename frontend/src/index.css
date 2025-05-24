@@ -1,10 +1,7 @@
-/* frontend/src/index.css */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* You can add your custom global CSS here after the directives */
-/* For example, for the custom scrollbar we added */
 .custom-scrollbar::-webkit-scrollbar {
     width: 8px;
 }
@@ -23,7 +20,6 @@
     background: #555;
 }
 
-/* Add any other global styles you need */
 body {
-  font-family: Arial, sans-serif; /* Example */
+  font-family: Arial, sans-serif;
 }
