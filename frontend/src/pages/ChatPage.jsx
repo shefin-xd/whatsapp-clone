@@ -23,14 +23,14 @@ const ChatPage = ({ socket }) => {
 
             // Listen for notifications
             socket.on('notification', (message) => {
-                // Handle notification display (e.g., show a toast, update badge)
                 console.log('New message notification:', message);
+                // You can add more complex notification logic here (e.g., toast, sound)
             });
 
             // Listen for disconnects
             socket.on('disconnect', () => {
                 console.log('Socket disconnected');
-                // Optionally handle re-connection or user feedback
+                // Handle re-connection or user feedback if needed
             });
 
             // Set up a cleanup function for socket events
@@ -43,19 +43,11 @@ const ChatPage = ({ socket }) => {
         }
     }, [currentUser, socket]);
 
-    // Handle initial selection of chat on desktop if any is active
-    useEffect(() => {
-        if (window.innerWidth >= 768 && !selectedChat) { // md: breakpoint
-            // If on desktop and no chat is selected, perhaps select the first chat in the list
-            // This is just a suggestion, you might want to show a "Welcome" screen instead
-            // For now, we'll let ChatList handle initial state.
-        }
-    }, [selectedChat]);
-
     // Function to handle chat selection (and hide sidebar on mobile)
     const handleChatSelect = (chat) => {
         setSelectedChat(chat);
-        if (window.innerWidth < 768) { // For mobile, hide sidebar when chat is selected
+        // Hide sidebar on mobile when a chat is selected
+        if (window.innerWidth < 768) {
             setShowSidebar(false);
         }
     };
@@ -66,24 +58,23 @@ const ChatPage = ({ socket }) => {
         setShowSidebar(true);
     };
 
-
     return (
         <div className="flex h-screen overflow-hidden">
-            {/* Sidebar (ChatList) */}
+            {/* Sidebar (Search and ChatList) */}
             <div
                 className={`w-full md:w-1/3 lg:w-1/4 xl:w-1/5 flex-shrink-0 bg-white border-r md:flex ${
-                    selectedChat && !showSidebar ? 'hidden md:flex' : 'flex' // Hide on mobile if chat selected, always show on desktop
+                    selectedChat && !showSidebar ? 'hidden' : 'flex' // Hide on mobile if chat selected and sidebar is explicitly hidden, else show
                 }`}
             >
-                <Sidebar currentUser={currentUser} logout={logout} />
+                <Sidebar currentUser={currentUser} logout={logout} setSelectedChat={handleChatSelect} socket={socket} />
                 <ChatList currentUser={currentUser} setSelectedChat={handleChatSelect} onlineUsers={onlineUsers} socket={socket} />
             </div>
 
             {/* Chat Window */}
             <div
                 className={`flex-1 flex flex-col ${
-                     selectedChat ? 'flex' : 'hidden'
-                 } md:flex`}
+                    selectedChat ? 'flex' : 'hidden' // Show chat window if chat is selected
+                } md:flex`} {/* Always show on medium and larger screens */}
             >
                 {selectedChat ? (
                     <ChatWindow
@@ -91,12 +82,12 @@ const ChatPage = ({ socket }) => {
                         currentUser={currentUser}
                         socket={socket}
                         onlineUsers={onlineUsers}
-                        setSelectedChat={setSelectedChat} // Pass setSelectedChat to update last message
+                        setSelectedChat={setSelectedChat}
                         onBack={handleBackToChatList} // Pass back handler for mobile
                     />
                 ) : (
-                    <div className="flex-1 flex items-center justify-center bg-gray-100 text-gray-500">
-                        Select a chat to start messaging
+                    <div className="flex-1 flex items-center justify-center bg-gray-100 text-gray-500 text-xl font-semibold">
+                        Select a chat or search for users to start messaging!
                     </div>
                 )}
             </div>
