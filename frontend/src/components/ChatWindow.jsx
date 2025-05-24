@@ -1,3 +1,4 @@
+// frontend/src/components/ChatWindow.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import api from '../utils/api';
 import dayjs from 'dayjs';
@@ -6,19 +7,23 @@ import Spinner from './Spinner'; // Assuming you have a Spinner component
 
 dayjs.extend(relativeTime);
 
-const ChatWindow = ({ chat, currentUser, socket, onlineUsers, setSelectedChat }) => {
+// Add onBack prop
+const ChatWindow = ({ chat, currentUser, socket, onlineUsers, setSelectedChat, onBack }) => {
     const [messages, setMessages] = useState([]);
     const [newMessage, setNewMessage] = useState('');
     const [typingUsers, setTypingUsers] = useState({});
-    const [isUploading, setIsUploading] = useState(false); // New state for upload spinner
+    const [isUploading, setIsUploading] = false;
     const messagesEndRef = useRef(null);
-    const fileInputRef = useRef(null); // Ref for file input
+    const fileInputRef = useRef(null);
 
     const otherParticipant = chat.participants.find(p => p._id !== currentUser._id);
     const isOtherUserOnline = otherParticipant && onlineUsers[otherParticipant._id];
     const otherUserLastSeen = otherParticipant?.lastSeen;
 
-    // Fetch messages for the selected chat
+    // ... (rest of your useEffects and handlers - they remain the same)
+    // The `handleSendMessage`, `handleTyping`, `handleMessageReaction`, `handleImageUpload`
+    // functions should be placed here, as they were in your last version.
+
     useEffect(() => {
         const fetchMessages = async () => {
             if (chat) {
@@ -38,7 +43,6 @@ const ChatWindow = ({ chat, currentUser, socket, onlineUsers, setSelectedChat })
         };
         fetchMessages();
 
-        // Listen for new messages specific to this chat
         socket.on('receive_message', (receivedMessage) => {
             if (receivedMessage.chat._id === chat._id) {
                 setMessages((prevMessages) => [...prevMessages, receivedMessage]);
@@ -52,7 +56,6 @@ const ChatWindow = ({ chat, currentUser, socket, onlineUsers, setSelectedChat })
             }
         });
 
-        // Listen for typing indicators
         socket.on('typing', (senderSocketId) => {
             if (senderSocketId !== socket.id && otherParticipant) {
                 setTypingUsers(prev => ({ ...prev, [otherParticipant._id]: true }));
@@ -65,7 +68,6 @@ const ChatWindow = ({ chat, currentUser, socket, onlineUsers, setSelectedChat })
             }
         });
 
-        // Listen for message reactions
         socket.on('new_reaction', ({ messageId, chat: reactedChatId, reactorId, emoji }) => {
             if (reactedChatId === chat._id) {
                 setMessages(prevMessages =>
@@ -91,7 +93,6 @@ const ChatWindow = ({ chat, currentUser, socket, onlineUsers, setSelectedChat })
         };
     }, [chat, currentUser, socket, otherParticipant]);
 
-    // Scroll to bottom whenever messages change
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages, typingUsers]);
@@ -108,7 +109,6 @@ const ChatWindow = ({ chat, currentUser, socket, onlineUsers, setSelectedChat })
             socket.emit('send_message', messageData);
             setNewMessage('');
             socket.emit('stop_typing', chat._id);
-            // Optimistically add message to UI
             setMessages((prevMessages) => [...prevMessages, { ...messageData, _id: Date.now(), sender: currentUser, createdAt: new Date() }]);
 
             setSelectedChat(prevChat => ({
@@ -136,29 +136,27 @@ const ChatWindow = ({ chat, currentUser, socket, onlineUsers, setSelectedChat })
         if (file) {
             setIsUploading(true);
             const formData = new FormData();
-            formData.append('image', file); // 'image' must match the backend's req.files.image
+            formData.append('image', file);
 
             try {
                 const config = {
                     headers: {
-                        'Content-Type': 'multipart/form-data', // Important for file uploads
+                        'Content-Type': 'multipart/form-data',
                         Authorization: `Bearer ${currentUser.token}`,
                     },
                 };
                 const { data } = await api.post('/upload/image', formData, config);
                 const imageUrl = data.url;
 
-                // Send image message via Socket.io
                 const imageMessageData = {
                     sender: currentUser._id,
                     chat: chat._id,
-                    content: '', // No text content for image message
+                    content: '',
                     type: 'image',
                     imageUrl: imageUrl,
                 };
                 socket.emit('send_message', imageMessageData);
 
-                // Optimistically add image message to UI
                 setMessages((prevMessages) => [...prevMessages, { ...imageMessageData, _id: Date.now(), sender: currentUser, createdAt: new Date() }]);
                 setSelectedChat(prevChat => ({
                     ...prevChat,
@@ -171,7 +169,7 @@ const ChatWindow = ({ chat, currentUser, socket, onlineUsers, setSelectedChat })
             } finally {
                 setIsUploading(false);
                 if (fileInputRef.current) {
-                    fileInputRef.current.value = ''; // Clear the input so same file can be chosen again
+                    fileInputRef.current.value = '';
                 }
             }
         }
@@ -181,6 +179,16 @@ const ChatWindow = ({ chat, currentUser, socket, onlineUsers, setSelectedChat })
         <div className="flex flex-col h-full bg-gray-100">
             {/* Chat Header */}
             <div className="bg-white p-4 border-b flex items-center justify-between shadow-sm">
+                {/* Back Button for Mobile */}
+                <button
+                    onClick={onBack}
+                    className="md:hidden mr-3 text-gray-600 hover:text-green-600 focus:outline-none"
+                    aria-label="Back to chats"
+                >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                    </svg>
+                </button>
                 <div className="flex items-center">
                     <img
                         src={otherParticipant?.profilePicture || 'https://icon-library.com/images/default-user-icon/default-user-icon-8.jpg'}
@@ -262,7 +270,7 @@ const ChatWindow = ({ chat, currentUser, socket, onlineUsers, setSelectedChat })
                 {/* Image Upload Button */}
                 <label htmlFor="image-upload" className="cursor-pointer text-gray-600 hover:text-green-600 text-2xl relative">
                     {isUploading ? (
-                        <Spinner /> // Show spinner during upload
+                        <Spinner />
                     ) : (
                         '📸'
                     )}
@@ -273,7 +281,7 @@ const ChatWindow = ({ chat, currentUser, socket, onlineUsers, setSelectedChat })
                         className="hidden"
                         onChange={handleImageUpload}
                         ref={fileInputRef}
-                        disabled={isUploading} // Disable during upload
+                        disabled={isUploading}
                     />
                 </label>
                 <input
@@ -282,7 +290,7 @@ const ChatWindow = ({ chat, currentUser, socket, onlineUsers, setSelectedChat })
                     onChange={handleTyping}
                     placeholder="Type a message..."
                     className="flex-1 p-3 rounded-full bg-gray-100 focus:outline-none focus:ring-2 focus:ring-green-500"
-                    disabled={isUploading} // Disable text input during image upload
+                    disabled={isUploading}
                 />
                 <button
                     type="submit"
