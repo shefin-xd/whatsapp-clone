@@ -13,6 +13,7 @@ const Message = require('./models/Message');
 // Import Routes
 const authRoutes = require('./routes/authRoutes');
 const chatRoutes = require('./routes/chatRoutes'); // New chat routes
+const userRoutes = require('./routes/userRoutes');
 
 const app = express();
 const server = http.createServer(app);
@@ -36,6 +37,7 @@ app.use(cors({
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/chats', chatRoutes); // Use chat routes
+app.use('/api/users', userRoutes);
 
 app.get('/', (req, res) => {
     res.send('API is running...');
