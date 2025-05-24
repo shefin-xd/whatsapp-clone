@@ -7,11 +7,14 @@ const userSchema = mongoose.Schema(
             type: String,
             required: true,
             unique: true,
+            trim: true,
         },
         email: {
             type: String,
             required: true,
             unique: true,
+            trim: true,
+            lowercase: true,
         },
         password: {
             type: String,
@@ -19,23 +22,19 @@ const userSchema = mongoose.Schema(
         },
         profilePicture: {
             type: String,
-            default: 'https://icon-library.com/images/default-user-icon/default-user-icon-8.jpg', // Default avatar
-        },
-        status: {
-            type: String,
-            enum: ['online', 'offline', 'typing...'],
-            default: 'offline',
+            default: 'https://icon-library.com/images/default-user-icon/default-user-icon-8.jpg',
         },
         lastSeen: {
             type: Date,
+            default: Date.now,
         },
     },
     {
-        timestamps: true, // Adds createdAt and updatedAt fields
+        timestamps: true,
     }
 );
 
-// Hash password before saving
+// Encrypt password before saving
 userSchema.pre('save', async function (next) {
     if (!this.isModified('password')) {
         next();
@@ -44,7 +43,7 @@ userSchema.pre('save', async function (next) {
     this.password = await bcrypt.hash(this.password, salt);
 });
 
-// Compare password
+// Match user entered password to hashed password in database
 userSchema.methods.matchPassword = async function (enteredPassword) {
     return await bcrypt.compare(enteredPassword, this.password);
 };
