@@ -1,11 +1,10 @@
-// backend/routes/userRoutes.js
+// backend/routes/userRoutes.js (NEW)
 const express = require('express');
 const { protect } = require('../middleware/authMiddleware');
-const { allUsers, registerUser } = require('../controllers/userController'); // Ensure allUsers is imported
+const { allUsers } = require('../controllers/userController'); // Only import allUsers
 
 const router = express.Router();
 
-router.route('/').get(protect, allUsers); // This is the route for searching users
-router.route('/register').post(registerUser); // Keep your registration route separate
+router.route('/').get(protect, allUsers); // Only the search route remains
 
 module.exports = router;
