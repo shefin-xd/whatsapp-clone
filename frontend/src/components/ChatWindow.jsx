@@ -2,14 +2,17 @@ import React, { useState, useEffect, useRef } from 'react';
 import api from '../utils/api';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
+import Spinner from './Spinner'; // Assuming you have a Spinner component
 
 dayjs.extend(relativeTime);
 
 const ChatWindow = ({ chat, currentUser, socket, onlineUsers, setSelectedChat }) => {
     const [messages, setMessages] = useState([]);
     const [newMessage, setNewMessage] = useState('');
-    const [typingUsers, setTypingUsers] = useState({}); // Stores senderId -> true/false for typing
+    const [typingUsers, setTypingUsers] = useState({});
+    const [isUploading, setIsUploading] = useState(false); // New state for upload spinner
     const messagesEndRef = useRef(null);
+    const fileInputRef = useRef(null); // Ref for file input
 
     const otherParticipant = chat.participants.find(p => p._id !== currentUser._id);
     const isOtherUserOnline = otherParticipant && onlineUsers[otherParticipant._id];
@@ -36,11 +39,9 @@ const ChatWindow = ({ chat, currentUser, socket, onlineUsers, setSelectedChat })
         fetchMessages();
 
         // Listen for new messages specific to this chat
-        // This listener is crucial for real-time updates when current chat is open
         socket.on('receive_message', (receivedMessage) => {
             if (receivedMessage.chat._id === chat._id) {
                 setMessages((prevMessages) => [...prevMessages, receivedMessage]);
-                // Clear typing indicator for the sender of this message
                 setTypingUsers((prev) => {
                     const newTyping = { ...prev };
                     if (newTyping[receivedMessage.sender._id]) {
@@ -53,22 +54,20 @@ const ChatWindow = ({ chat, currentUser, socket, onlineUsers, setSelectedChat })
 
         // Listen for typing indicators
         socket.on('typing', (senderSocketId) => {
-            // We need to map socketId back to userId, this is simplified for now
-            // In a real app, you'd emit userId with typing event
-            if (senderSocketId !== socket.id) { // Don't show typing for self
-                setTypingUsers(prev => ({ ...prev, [otherParticipant._id]: true })); // Assuming only one other participant
+            if (senderSocketId !== socket.id && otherParticipant) {
+                setTypingUsers(prev => ({ ...prev, [otherParticipant._id]: true }));
             }
         });
 
         socket.on('stop_typing', (senderSocketId) => {
-            if (senderSocketId !== socket.id) {
+            if (senderSocketId !== socket.id && otherParticipant) {
                 setTypingUsers(prev => ({ ...prev, [otherParticipant._id]: false }));
             }
         });
 
         // Listen for message reactions
         socket.on('new_reaction', ({ messageId, chat: reactedChatId, reactorId, emoji }) => {
-            if (reactedChatId === chat._id) { // Only update if reaction is for current chat
+            if (reactedChatId === chat._id) {
                 setMessages(prevMessages =>
                     prevMessages.map(msg =>
                         msg._id === messageId
@@ -84,15 +83,13 @@ const ChatWindow = ({ chat, currentUser, socket, onlineUsers, setSelectedChat })
             }
         });
 
-
         return () => {
-            // Clean up listeners when chat changes or component unmounts
             socket.off('receive_message');
             socket.off('typing');
             socket.off('stop_typing');
             socket.off('new_reaction');
         };
-    }, [chat, currentUser, socket, otherParticipant]); // Depend on chat and currentUser to refetch/re-setup
+    }, [chat, currentUser, socket, otherParticipant]);
 
     // Scroll to bottom whenever messages change
     useEffect(() => {
@@ -108,19 +105,16 @@ const ChatWindow = ({ chat, currentUser, socket, onlineUsers, setSelectedChat })
                 content: newMessage,
                 type: 'text',
             };
-            // Emit to socket for real-time delivery
             socket.emit('send_message', messageData);
             setNewMessage('');
-            socket.emit('stop_typing', chat._id); // Stop typing after sending
+            socket.emit('stop_typing', chat._id);
             // Optimistically add message to UI
             setMessages((prevMessages) => [...prevMessages, { ...messageData, _id: Date.now(), sender: currentUser, createdAt: new Date() }]);
 
-            // Update the selected chat's messages in ChatPage's state directly for quick UI update
             setSelectedChat(prevChat => ({
                 ...prevChat,
                 messages: [...(prevChat.messages || []), { ...messageData, _id: Date.now(), sender: currentUser, createdAt: new Date() }]
             }));
-
         }
     };
 
@@ -135,6 +129,52 @@ const ChatWindow = ({ chat, currentUser, socket, onlineUsers, setSelectedChat })
 
     const handleMessageReaction = (messageId, emoji) => {
         socket.emit('message_reaction', { messageId, reactorId: currentUser._id, emoji });
+    };
+
+    const handleImageUpload = async (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            setIsUploading(true);
+            const formData = new FormData();
+            formData.append('image', file); // 'image' must match the backend's req.files.image
+
+            try {
+                const config = {
+                    headers: {
+                        'Content-Type': 'multipart/form-data', // Important for file uploads
+                        Authorization: `Bearer ${currentUser.token}`,
+                    },
+                };
+                const { data } = await api.post('/upload/image', formData, config);
+                const imageUrl = data.url;
+
+                // Send image message via Socket.io
+                const imageMessageData = {
+                    sender: currentUser._id,
+                    chat: chat._id,
+                    content: '', // No text content for image message
+                    type: 'image',
+                    imageUrl: imageUrl,
+                };
+                socket.emit('send_message', imageMessageData);
+
+                // Optimistically add image message to UI
+                setMessages((prevMessages) => [...prevMessages, { ...imageMessageData, _id: Date.now(), sender: currentUser, createdAt: new Date() }]);
+                setSelectedChat(prevChat => ({
+                    ...prevChat,
+                    messages: [...(prevChat.messages || []), { ...imageMessageData, _id: Date.now(), sender: currentUser, createdAt: new Date() }]
+                }));
+
+            } catch (error) {
+                console.error('Error uploading image:', error);
+                alert('Failed to upload image. Please try again.');
+            } finally {
+                setIsUploading(false);
+                if (fileInputRef.current) {
+                    fileInputRef.current.value = ''; // Clear the input so same file can be chosen again
+                }
+            }
+        }
     };
 
     return (
@@ -185,12 +225,11 @@ const ChatWindow = ({ chat, currentUser, socket, onlineUsers, setSelectedChat })
                                     {msg.reactions.map((r, i) => (
                                         <span key={i} className="mr-0.5">{r.emoji}</span>
                                     ))}
-                                    {/* Optional: Show count if multiple reactions */}
                                     {msg.reactions.length > 1 && <span className="ml-0.5 text-gray-600">{msg.reactions.length}</span>}
                                 </div>
                             )}
 
-                            {/* Reaction button */}
+                            {/* Reaction buttons */}
                             <button
                                 onClick={() => handleMessageReaction(msg._id, '👍')}
                                 className="absolute -top-2 left-2 bg-gray-100 rounded-full text-lg px-2 py-0.5 shadow-sm hover:bg-gray-200"
@@ -220,10 +259,22 @@ const ChatWindow = ({ chat, currentUser, socket, onlineUsers, setSelectedChat })
 
             {/* Message Input */}
             <form onSubmit={handleSendMessage} className="p-4 bg-white border-t flex items-center space-x-2 shadow-inner">
-                {/* Image Upload Button (will implement functionality later) */}
-                <label htmlFor="image-upload" className="cursor-pointer text-gray-600 hover:text-green-600 text-2xl">
-                    📸
-                    <input id="image-upload" type="file" accept="image/*" className="hidden" />
+                {/* Image Upload Button */}
+                <label htmlFor="image-upload" className="cursor-pointer text-gray-600 hover:text-green-600 text-2xl relative">
+                    {isUploading ? (
+                        <Spinner /> // Show spinner during upload
+                    ) : (
+                        '📸'
+                    )}
+                    <input
+                        id="image-upload"
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleImageUpload}
+                        ref={fileInputRef}
+                        disabled={isUploading} // Disable during upload
+                    />
                 </label>
                 <input
                     type="text"
@@ -231,10 +282,12 @@ const ChatWindow = ({ chat, currentUser, socket, onlineUsers, setSelectedChat })
                     onChange={handleTyping}
                     placeholder="Type a message..."
                     className="flex-1 p-3 rounded-full bg-gray-100 focus:outline-none focus:ring-2 focus:ring-green-500"
+                    disabled={isUploading} // Disable text input during image upload
                 />
                 <button
                     type="submit"
                     className="bg-green-500 text-white rounded-full p-3 hover:bg-green-600 transition"
+                    disabled={isUploading}
                 >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
