@@ -1,13 +1,10 @@
+// backend/routes/authRoutes.js (Confirm this is correct)
 const express = require('express');
 const asyncHandler = require('express-async-handler');
 const User = require('../models/User');
-const generateAccessToken = require('../utils/generateToken'); // <-- Corrected import
+const generateAccessToken = require('../utils/generateToken'); // Make sure this is correctly imported
 
 const router = express.Router();
-
-// Removed the duplicate generateAccessToken function from here,
-// as it's now imported from utils/generateToken.js
-// const generateAccessToken = (id) => { ... };
 
 // @desc    Register a new user
 // @route   POST /api/auth/register
@@ -42,7 +39,7 @@ router.post(
                 username: user.username,
                 email: user.email,
                 profilePicture: user.profilePicture,
-                token: generateAccessToken(user._id), // Use the imported function
+                token: generateAccessToken(user._id),
             });
         } else {
             res.status(400);
@@ -51,7 +48,7 @@ router.post(
     })
 );
 
-// @desc    Authenticate user & get token
+// @desc    Authenticate user & get token (Login)
 // @route   POST /api/auth/login
 // @access  Public
 router.post(
@@ -67,7 +64,7 @@ router.post(
                 username: user.username,
                 email: user.email,
                 profilePicture: user.profilePicture,
-                token: generateAccessToken(user._id), // Use the imported function
+                token: generateAccessToken(user._id),
             });
         } else {
             res.status(401);
