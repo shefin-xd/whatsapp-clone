@@ -3,16 +3,15 @@ import React, { useState, useEffect, useRef } from 'react';
 import api from '../utils/api';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
-import Spinner from './Spinner'; // Assuming you have a Spinner component
+import Spinner from './Spinner';
 
 dayjs.extend(relativeTime);
 
-// Add onBack prop
 const ChatWindow = ({ chat, currentUser, socket, onlineUsers, setSelectedChat, onBack }) => {
     const [messages, setMessages] = useState([]);
     const [newMessage, setNewMessage] = useState('');
     const [typingUsers, setTypingUsers] = useState({});
-    const [isUploading, setIsUploading] = false;
+    const [isUploading, setIsUploading] = useState(false);
     const messagesEndRef = useRef(null);
     const fileInputRef = useRef(null);
 
@@ -20,10 +19,7 @@ const ChatWindow = ({ chat, currentUser, socket, onlineUsers, setSelectedChat, o
     const isOtherUserOnline = otherParticipant && onlineUsers[otherParticipant._id];
     const otherUserLastSeen = otherParticipant?.lastSeen;
 
-    // ... (rest of your useEffects and handlers - they remain the same)
-    // The `handleSendMessage`, `handleTyping`, `handleMessageReaction`, `handleImageUpload`
-    // functions should be placed here, as they were in your last version.
-
+    // Fetch messages for the selected chat
     useEffect(() => {
         const fetchMessages = async () => {
             if (chat) {
@@ -43,9 +39,12 @@ const ChatWindow = ({ chat, currentUser, socket, onlineUsers, setSelectedChat, o
         };
         fetchMessages();
 
+        // Listen for new messages specific to this chat
         socket.on('receive_message', (receivedMessage) => {
+            // Ensure the message is for the currently active chat
             if (receivedMessage.chat._id === chat._id) {
                 setMessages((prevMessages) => [...prevMessages, receivedMessage]);
+                // Also stop typing indicator if the sender sent a message
                 setTypingUsers((prev) => {
                     const newTyping = { ...prev };
                     if (newTyping[receivedMessage.sender._id]) {
@@ -56,18 +55,21 @@ const ChatWindow = ({ chat, currentUser, socket, onlineUsers, setSelectedChat, o
             }
         });
 
+        // Listen for typing indicators
         socket.on('typing', (senderSocketId) => {
-            if (senderSocketId !== socket.id && otherParticipant) {
+            // Only show typing if it's from the other participant in this chat
+            if (onlineUsers[otherParticipant?._id] === senderSocketId) {
                 setTypingUsers(prev => ({ ...prev, [otherParticipant._id]: true }));
             }
         });
 
         socket.on('stop_typing', (senderSocketId) => {
-            if (senderSocketId !== socket.id && otherParticipant) {
+            if (onlineUsers[otherParticipant?._id] === senderSocketId) {
                 setTypingUsers(prev => ({ ...prev, [otherParticipant._id]: false }));
             }
         });
 
+        // Listen for message reactions
         socket.on('new_reaction', ({ messageId, chat: reactedChatId, reactorId, emoji }) => {
             if (reactedChatId === chat._id) {
                 setMessages(prevMessages =>
@@ -91,8 +93,9 @@ const ChatWindow = ({ chat, currentUser, socket, onlineUsers, setSelectedChat, o
             socket.off('stop_typing');
             socket.off('new_reaction');
         };
-    }, [chat, currentUser, socket, otherParticipant]);
+    }, [chat, currentUser, socket, onlineUsers, otherParticipant]);
 
+    // Scroll to bottom whenever messages change
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages, typingUsers]);
@@ -109,11 +112,13 @@ const ChatWindow = ({ chat, currentUser, socket, onlineUsers, setSelectedChat, o
             socket.emit('send_message', messageData);
             setNewMessage('');
             socket.emit('stop_typing', chat._id);
+            // Optimistically add message to UI for immediate feedback
             setMessages((prevMessages) => [...prevMessages, { ...messageData, _id: Date.now(), sender: currentUser, createdAt: new Date() }]);
 
+            // Update the lastMessage in the selectedChat for the chat list (if it's not already updated by socket)
             setSelectedChat(prevChat => ({
                 ...prevChat,
-                messages: [...(prevChat.messages || []), { ...messageData, _id: Date.now(), sender: currentUser, createdAt: new Date() }]
+                lastMessage: { ...messageData, sender: currentUser, createdAt: new Date() } // Update last message in chat object
             }));
         }
     };
@@ -136,31 +141,34 @@ const ChatWindow = ({ chat, currentUser, socket, onlineUsers, setSelectedChat, o
         if (file) {
             setIsUploading(true);
             const formData = new FormData();
-            formData.append('image', file);
+            formData.append('image', file); // 'image' must match the backend's req.files.image
 
             try {
                 const config = {
                     headers: {
-                        'Content-Type': 'multipart/form-data',
+                        'Content-Type': 'multipart/form-data', // Important for file uploads
                         Authorization: `Bearer ${currentUser.token}`,
                     },
                 };
                 const { data } = await api.post('/upload/image', formData, config);
                 const imageUrl = data.url;
 
+                // Send image message via Socket.io
                 const imageMessageData = {
                     sender: currentUser._id,
                     chat: chat._id,
-                    content: '',
+                    content: '', // No text content for image message
                     type: 'image',
                     imageUrl: imageUrl,
                 };
                 socket.emit('send_message', imageMessageData);
 
+                // Optimistically add image message to UI
                 setMessages((prevMessages) => [...prevMessages, { ...imageMessageData, _id: Date.now(), sender: currentUser, createdAt: new Date() }]);
+                 // Update the lastMessage in the selectedChat for the chat list
                 setSelectedChat(prevChat => ({
                     ...prevChat,
-                    messages: [...(prevChat.messages || []), { ...imageMessageData, _id: Date.now(), sender: currentUser, createdAt: new Date() }]
+                    lastMessage: { ...imageMessageData, sender: currentUser, createdAt: new Date() }
                 }));
 
             } catch (error) {
@@ -169,7 +177,7 @@ const ChatWindow = ({ chat, currentUser, socket, onlineUsers, setSelectedChat, o
             } finally {
                 setIsUploading(false);
                 if (fileInputRef.current) {
-                    fileInputRef.current.value = '';
+                    fileInputRef.current.value = ''; // Clear the input so same file can be chosen again
                 }
             }
         }
@@ -237,21 +245,24 @@ const ChatWindow = ({ chat, currentUser, socket, onlineUsers, setSelectedChat, o
                                 </div>
                             )}
 
-                            {/* Reaction buttons */}
-                            <button
-                                onClick={() => handleMessageReaction(msg._id, '👍')}
-                                className="absolute -top-2 left-2 bg-gray-100 rounded-full text-lg px-2 py-0.5 shadow-sm hover:bg-gray-200"
-                                title="React with Thumbs Up"
-                            >
-                                👍
-                            </button>
-                            <button
-                                onClick={() => handleMessageReaction(msg._id, '❤️')}
-                                className="absolute -top-2 left-8 bg-gray-100 rounded-full text-lg px-2 py-0.5 shadow-sm hover:bg-gray-200"
-                                title="React with Heart"
-                            >
-                                ❤️
-                            </button>
+                            {/* Reaction buttons - position them relative to message bubble */}
+                            <div className="absolute -top-2 flex space-x-1"
+                                style={msg.sender._id === currentUser._id ? { left: '-40px' } : { right: '-40px' }}>
+                                <button
+                                    onClick={() => handleMessageReaction(msg._id, '👍')}
+                                    className="bg-gray-100 rounded-full text-lg px-2 py-0.5 shadow-sm hover:bg-gray-200"
+                                    title="React with Thumbs Up"
+                                >
+                                    👍
+                                </button>
+                                <button
+                                    onClick={() => handleMessageReaction(msg._id, '❤️')}
+                                    className="bg-gray-100 rounded-full text-lg px-2 py-0.5 shadow-sm hover:bg-gray-200"
+                                    title="React with Heart"
+                                >
+                                    ❤️
+                                </button>
+                            </div>
                         </div>
                     </div>
                 ))}
