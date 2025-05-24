@@ -13,17 +13,18 @@ const Message = require('./models/Message');
 
 // Import Routes
 const authRoutes = require('./routes/authRoutes');
-const chatRoutes = require('./routes/chatRoutes'); // New chat routes
+const chatRoutes = require('./routes/chatRoutes');
 const userRoutes = require('./routes/userRoutes');
 const uploadRoutes = require('./routes/uploadRoutes'); // Import upload routes
 
 const app = express();
 const server = http.createServer(app);
 const io = socketio(server, {
-    pingTimeout: 60000, // Disconnects after 60s of no activity
+    pingTimeout: 60000,
     cors: {
         origin: process.env.FRONTEND_URL || 'http://localhost:5173',
-        methods: ['GET', 'POST'],
+        methods: ['GET', 'POST', 'PUT', 'DELETE'],
+        credentials: true
     },
 });
 
@@ -31,9 +32,11 @@ const io = socketio(server, {
 connectDB();
 
 // Middleware
-app.use(express.json());
+app.use(express.json()); // For parsing application/json
 app.use(cors({
     origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    credentials: true
 }));
 
 // Express File Upload Middleware
@@ -42,48 +45,43 @@ app.use(fileUpload({
     tempFileDir: '/tmp/', // Specify a directory for temporary files (important for deployment)
 }));
 
+
 // Routes
 app.use('/api/auth', authRoutes);
-app.use('/api/chats', chatRoutes); // Use chat routes
+app.use('/api/chats', chatRoutes);
 app.use('/api/users', userRoutes);
-app.use('/api/upload', uploadRoutes); // Use upload routes
+app.use('/api/upload', uploadRoutes);
 
 app.get('/', (req, res) => {
     res.send('API is running...');
 });
 
-// --- Socket.io Logic ---
-let onlineUsers = new Map(); // Store userId -> socketId for online presence
+// Socket.io Logic
+let onlineUsers = {}; // Stores { userId: socketId }
 
 io.on('connection', (socket) => {
     console.log('A user connected:', socket.id);
 
-    // When a user connects and provides their ID (e.g., after login)
-    socket.on('setup', (userData) => {
-        if (userData && userData._id) {
-            socket.join(userData._id); // Join a personal room for notifications
-            onlineUsers.set(userData._id, socket.id); // Mark user as online
-
-            // Update user status in DB (optional, but good for persistence)
-            User.findByIdAndUpdate(userData._id, { status: 'online', lastSeen: new Date() }).catch(console.error);
-
-            io.emit('user_online', userData._id); // Notify all clients that this user is online
-            console.log(`User ${userData.username} (${userData._id}) connected and joined personal room.`);
-        }
+    // Event: setup - emitted by client on login
+    socket.on('setup', (userId) => {
+        socket.join(userId); // User joins their personal room
+        onlineUsers[userId] = socket.id; // Mark user as online
+        console.log(`User ${userId} connected and joined personal room.`);
+        io.emit('online_users', onlineUsers); // Emit updated online users list to everyone
     });
 
-    // When a user joins a specific chat room
+    // Event: join_chat - emitted by client when selecting a chat
     socket.on('join_chat', (chatId) => {
-        socket.join(chatId);
+        socket.join(chatId); // User joins the specific chat room
         console.log(`User ${socket.id} joined chat: ${chatId}`);
     });
 
-    // When a message is sent
+    // Event: send_message - emitted by client when sending a message
     socket.on('send_message', async (newMessageReceived) => {
         let chat = newMessageReceived.chat;
 
         if (!chat.participants) {
-            return console.log('Chat.participants not defined');
+            return console.log('Chat.participants not defined for received message');
         }
 
         try {
@@ -99,16 +97,22 @@ io.on('connection', (socket) => {
 
             // Populate sender and chat details for broadcasting
             message = await message.populate('sender', 'username profilePicture');
-            message = await message.populate('chat');
+            message = await message.populate('chat'); // Populate chat data including participants
 
             // Update lastMessage in the Chat model
             await Chat.findByIdAndUpdate(chat._id, { lastMessage: message._id });
 
             // Emit the message to all participants in the chat room
             chat.participants.forEach((participant) => {
-                io.to(participant._id.toString()).emit('receive_message', message);
-                // Also emit notification if user is not in the current chat room
-                if (!socket.rooms.has(chat._id.toString()) || participant._id.toString() !== message.sender._id.toString()) {
+                // Don't send notification to the sender if they are in the chat room
+                if (participant._id.toString() === message.sender._id.toString() && socket.rooms.has(chat._id.toString())) {
+                    io.to(participant._id.toString()).emit('receive_message', message);
+                } else if (onlineUsers[participant._id.toString()] && io.sockets.sockets.get(onlineUsers[participant._id.toString()]).rooms.has(chat._id.toString())) {
+                    // If recipient is online AND in the chat room, just send message
+                    io.to(participant._id.toString()).emit('receive_message', message);
+                } else if (onlineUsers[participant._id.toString()]) {
+                    // If recipient is online but NOT in the chat room, send message AND notification
+                    io.to(participant._id.toString()).emit('receive_message', message); // Still send message to update chat list
                     io.to(participant._id.toString()).emit('notification', message);
                 }
             });
@@ -117,60 +121,78 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Typing indicator
+    // Event: typing - emitted by client when typing
     socket.on('typing', (chatId) => socket.to(chatId).emit('typing', socket.id));
+
+    // Event: stop_typing - emitted by client when stop typing
     socket.on('stop_typing', (chatId) => socket.to(chatId).emit('stop_typing', socket.id));
 
-    // Message reactions (basic)
+    // Event: message_reaction - emitted by client when reacting to a message
     socket.on('message_reaction', async ({ messageId, reactorId, emoji }) => {
         try {
             const message = await Message.findById(messageId);
             if (!message) return;
 
-            // Add/update reaction
-            const existingReactionIndex = message.reactions.findIndex(
-                (r) => r.reactor.toString() === reactorId
-            );
-            if (existingReactionIndex !== -1) {
+            // Check if reaction already exists from this reactor
+            const existingReactionIndex = message.reactions.findIndex(r => r.reactor.toString() === reactorId);
+
+            if (existingReactionIndex > -1) {
+                // Update existing reaction
                 message.reactions[existingReactionIndex].emoji = emoji;
             } else {
+                // Add new reaction
                 message.reactions.push({ reactor: reactorId, emoji });
             }
             await message.save();
 
-            // Emit to all members of the chat
-            io.to(message.chat.toString()).emit('new_reaction', { messageId, reactorId, emoji, chat: message.chat });
+            // Emit to all participants in the chat
+            const chat = await Chat.findById(message.chat);
+            if (chat && chat.participants) {
+                chat.participants.forEach(participant => {
+                    io.to(participant._id.toString()).emit('new_reaction', {
+                        messageId: message._id,
+                        chat: chat._id,
+                        reactorId: reactorId,
+                        emoji: emoji,
+                    });
+                });
+            }
         } catch (error) {
-            console.error('Error adding reaction via socket:', error);
+            console.error('Error handling message reaction:', error);
         }
     });
 
 
-    // User disconnects
-    socket.off('setup', () => {
-        console.log('User disconnected from setup');
-        socket.leave(userData._id);
-    });
-
-    socket.on('disconnect', async () => {
+    // Event: disconnect - emitted when a user disconnects
+    socket.on('disconnect', () => {
         console.log('User disconnected:', socket.id);
-        let disconnectedUserId = null;
-        for (let [userId, socketId] of onlineUsers.entries()) {
-            if (socketId === socket.id) {
-                disconnectedUserId = userId;
+        // Find and remove the disconnected user from onlineUsers
+        for (const userId in onlineUsers) {
+            if (onlineUsers[userId] === socket.id) {
+                delete onlineUsers[userId];
+                // Update lastSeen for the disconnected user
+                User.findByIdAndUpdate(userId, { lastSeen: new Date() }, { new: true })
+                    .then(() => console.log(`User ${userId} last seen updated.`))
+                    .catch(err => console.error(`Error updating lastSeen for ${userId}:`, err));
                 break;
             }
         }
+        io.emit('online_users', onlineUsers); // Emit updated online users list
+    });
 
-        if (disconnectedUserId) {
-            onlineUsers.delete(disconnectedUserId);
-            // Update user status in DB
-            await User.findByIdAndUpdate(disconnectedUserId, { status: 'offline', lastSeen: new Date() });
-            io.emit('user_offline', disconnectedUserId); // Notify all clients
-            console.log(`User ${disconnectedUserId} went offline.`);
+    // Custom disconnect event from client (e.g., on logout)
+    socket.on('disconnect_user', (userId) => {
+        console.log(`User ${userId} manually disconnected.`);
+        if (onlineUsers[userId]) {
+            delete onlineUsers[userId];
+            User.findByIdAndUpdate(userId, { lastSeen: new Date() }, { new: true })
+                .then(() => console.log(`User ${userId} last seen updated due to manual disconnect.`))
+                .catch(err => console.error(`Error updating lastSeen for ${userId}:`, err));
         }
+        io.emit('online_users', onlineUsers);
     });
 });
+
 
 const PORT = process.env.PORT || 5000;
 
