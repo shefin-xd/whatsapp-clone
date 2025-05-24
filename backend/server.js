@@ -4,6 +4,7 @@ const http = require('http');
 const socketio = require('socket.io');
 const connectDB = require('./config/db');
 const cors = require('cors');
+const fileUpload = require('express-fileupload'); // Import express-fileupload
 
 // Import Models
 const User = require('./models/User');
@@ -14,6 +15,7 @@ const Message = require('./models/Message');
 const authRoutes = require('./routes/authRoutes');
 const chatRoutes = require('./routes/chatRoutes'); // New chat routes
 const userRoutes = require('./routes/userRoutes');
+const uploadRoutes = require('./routes/uploadRoutes'); // Import upload routes
 
 const app = express();
 const server = http.createServer(app);
@@ -34,10 +36,17 @@ app.use(cors({
     origin: process.env.FRONTEND_URL || 'http://localhost:5173',
 }));
 
+// Express File Upload Middleware
+app.use(fileUpload({
+    useTempFiles: true, // Use temporary files to handle large uploads
+    tempFileDir: '/tmp/', // Specify a directory for temporary files (important for deployment)
+}));
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/chats', chatRoutes); // Use chat routes
 app.use('/api/users', userRoutes);
+app.use('/api/upload', uploadRoutes); // Use upload routes
 
 app.get('/', (req, res) => {
     res.send('API is running...');
@@ -78,28 +87,29 @@ io.on('connection', (socket) => {
         }
 
         try {
-            let message = await Message.create(newMessageReceived); // Assuming newMessageReceived has sender, chat, content, type etc.
+            // Ensure message object is fully formed for creation
+            const { sender, content, type, imageUrl, chat: chatId } = newMessageReceived;
+            let message = await Message.create({
+                sender,
+                chat: chatId,
+                content: content || '', // Content might be empty for image-only messages
+                type: type || 'text',
+                imageUrl: imageUrl || null,
+            });
 
             // Populate sender and chat details for broadcasting
             message = await message.populate('sender', 'username profilePicture');
-            message = await message.populate('chat'); // Populate chat details
+            message = await message.populate('chat');
 
             // Update lastMessage in the Chat model
             await Chat.findByIdAndUpdate(chat._id, { lastMessage: message._id });
 
             // Emit the message to all participants in the chat room
             chat.participants.forEach((participant) => {
-                // Don't send to the sender himself (optional, frontend will already display it)
-                // if (participant._id.toString() === message.sender._id.toString()) return;
-
-                // Send to the room if the participant is in it
-                if (socket.rooms.has(chat._id.toString())) { // Check if the sender is in the room
-                    io.to(chat._id.toString()).emit('receive_message', message);
-                } else {
-                    // If participant is not in the room (e.g., not currently viewing this chat),
-                    // send to their personal room for notification purposes.
-                    io.to(participant._id.toString()).emit('receive_message', message);
-                    io.to(participant._id.toString()).emit('notification', message); // Specific notification event
+                io.to(participant._id.toString()).emit('receive_message', message);
+                // Also emit notification if user is not in the current chat room
+                if (!socket.rooms.has(chat._id.toString()) || participant._id.toString() !== message.sender._id.toString()) {
+                    io.to(participant._id.toString()).emit('notification', message);
                 }
             });
         } catch (error) {
