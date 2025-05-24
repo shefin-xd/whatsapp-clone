@@ -1,43 +1,55 @@
-import React from 'react';
+// frontend/src/App.jsx
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, useAuth } from './context/AuthContext';
-import Register from './pages/Register';
 import Login from './pages/Login';
-import ChatPage from './pages/ChatPage'; // Import ChatPage
+import Register from './pages/Register';
+import ChatPage from './pages/ChatPage'; // This will contain the main responsive logic
+import AuthContext from './context/AuthContext';
+import io from 'socket.io-client';
 
-// PrivateRoute component
-const PrivateRoute = ({ children }) => {
-    const { user, loading } = useAuth();
+const socket = io(import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000', {
+    transports: ['websocket', 'polling']
+});
 
-    if (loading) {
-        // You might want a loading spinner here
-        return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
-    }
+function App() {
+    const [currentUser, setCurrentUser] = useState(null);
 
-    return user ? children : <Navigate to="/login" />;
-};
+    useEffect(() => {
+        const userInfo = localStorage.getItem('userInfo');
+        if (userInfo) {
+            setCurrentUser(JSON.parse(userInfo));
+        }
+    }, []);
 
+    const login = (user) => {
+        localStorage.setItem('userInfo', JSON.stringify(user));
+        setCurrentUser(user);
+    };
 
-const App = () => {
+    const logout = () => {
+        localStorage.removeItem('userInfo');
+        setCurrentUser(null);
+        socket.emit('disconnect_user', currentUser._id); // Emit disconnect event
+        socket.disconnect(); // Disconnect socket manually
+    };
+
     return (
-        <AuthProvider>
+        <AuthContext.Provider value={{ currentUser, login, logout }}>
             <Router>
-                <Routes>
-                    <Route path="/register" element={<Register />} />
-                    <Route path="/login" element={<Login />} />
-                    <Route
-                        path="/"
-                        element={
-                            <PrivateRoute>
-                                <ChatPage /> {/* Our main chat application */}
-                            </PrivateRoute>
-                        }
-                    />
-                    {/* Add more routes as needed */}
-                </Routes>
+                <div className="min-h-screen flex flex-col">
+                    <Routes>
+                        <Route path="/" element={currentUser ? <Navigate to="/chats" /> : <Login />} />
+                        <Route path="/register" element={<Register />} />
+                        <Route
+                            path="/chats"
+                            element={currentUser ? <ChatPage socket={socket} /> : <Navigate to="/" />}
+                        />
+                        <Route path="*" element={<Navigate to="/" />} /> {/* Fallback route */}
+                    </Routes>
+                </div>
             </Router>
-        </AuthProvider>
+        </AuthContext.Provider>
     );
-};
+}
 
 export default App;
