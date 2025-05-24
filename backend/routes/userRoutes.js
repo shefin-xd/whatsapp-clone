@@ -1,10 +1,10 @@
-// backend/routes/userRoutes.js (NEW)
 const express = require('express');
 const { protect } = require('../middleware/authMiddleware');
-const { allUsers } = require('../controllers/userController'); // Only import allUsers
+const { allUsers } = require('../controllers/userController');
 
 const router = express.Router();
 
-router.route('/').get(protect, allUsers); // Only the search route remains
+// Only the search route for users
+router.route('/').get(protect, allUsers);
 
 module.exports = router;
