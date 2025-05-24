@@ -2,7 +2,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-    baseURL: import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000/api', // Your backend API base URL
+    baseURL: 'https://shefin-whatsapp-clone.onrender.com/api', // Your backend API base URL
 });
 
 export default api;
