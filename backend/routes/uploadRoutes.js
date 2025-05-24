@@ -1,8 +1,7 @@
-// backend/routes/uploadRoutes.js
 const express = require('express');
 const asyncHandler = require('express-async-handler');
 const { protect } = require('../middleware/authMiddleware');
-const cloudinary = require('../config/cloudinary'); // Import Cloudinary config
+const cloudinary = require('../config/cloudinary');
 
 const router = express.Router();
 
