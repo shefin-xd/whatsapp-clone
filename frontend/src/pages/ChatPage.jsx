@@ -74,7 +74,7 @@ const ChatPage = ({ socket }) => {
             <div
                 className={`flex-1 flex flex-col ${
                     selectedChat ? 'flex' : 'hidden' // Show chat window if chat is selected
-                } md:flex`} {/* Always show on medium and larger screens */}
+                } md:flex`}
             >
                 {selectedChat ? (
                     <ChatWindow
