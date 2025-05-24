@@ -1,7 +1,7 @@
 // frontend/src/components/ChatList.jsx
 import React, { useState, useEffect } from 'react';
 import api from '../utils/api';
-import Spinner from './Spinner'; // Assuming you have a Spinner component
+import Spinner from './Spinner';
 
 const ChatList = ({ currentUser, setSelectedChat, onlineUsers, socket }) => {
     const [chats, setChats] = useState([]);
@@ -52,6 +52,8 @@ const ChatList = ({ currentUser, setSelectedChat, onlineUsers, socket }) => {
                     newChats.splice(chatIndex, 1); // Remove old position
                     return [updatedChat, ...newChats]; // Add to top
                 }
+                // If the message is for a new chat not yet in the list (e.g., from a fresh chat creation not through this socket listener)
+                // You might need to refetch chats or add logic to push it here
                 return prevChats;
             });
         });
