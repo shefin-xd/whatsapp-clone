@@ -1,9 +1,8 @@
-// frontend/src/App.jsx
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/Login';
 import Register from './pages/Register';
-import ChatPage from './pages/ChatPage'; // This will contain the main responsive logic
+import ChatPage from './pages/ChatPage';
 import AuthContext from './context/AuthContext';
 import io from 'socket.io-client';
 
@@ -27,10 +26,14 @@ function App() {
     };
 
     const logout = () => {
+        // Emit disconnect event before clearing local storage
+        if (currentUser && socket) {
+            socket.emit('disconnect_user', currentUser._id);
+        }
         localStorage.removeItem('userInfo');
         setCurrentUser(null);
-        socket.emit('disconnect_user', currentUser._id); // Emit disconnect event
-        socket.disconnect(); // Disconnect socket manually
+        // Disconnect socket manually if needed, or let the 'disconnect' event handle it
+        socket.disconnect();
     };
 
     return (
@@ -44,7 +47,7 @@ function App() {
                             path="/chats"
                             element={currentUser ? <ChatPage socket={socket} /> : <Navigate to="/" />}
                         />
-                        <Route path="*" element={<Navigate to="/" />} /> {/* Fallback route */}
+                        <Route path="*" element={<Navigate to="/" />} />
                     </Routes>
                 </div>
             </Router>
